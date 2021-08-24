@@ -16,7 +16,10 @@ import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import org.apache.commons.io.FileUtils;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -36,9 +39,11 @@ public class MainActivity extends AppCompatActivity {
                     int position = result.getData().getIntExtra("position", -1);
                     items.set(position, editedItem);
                     Log.i("Updated item in list ", editedItem + ", position: " + position);
+
                     // Make a standard toast that just contains text
                     Toast.makeText(getApplicationContext(), "Updated: " + editedItem, Toast.LENGTH_SHORT).show();
                     itemsAdapter.notifyDataSetChanged();
+                    saveItemsToFile();
                 }
             }
     );
@@ -60,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
         items.add("item one");
         items.add("item two");
 
+        readItemsFromFile();
+
         // Create an adapter for the list view using Android's built-in item layout
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1,
                 items);
@@ -75,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
         if (toAddString != null && toAddString.length() > 0) {
             itemsAdapter.add(toAddString); // Add text to list view adapter
             addItemEditText.setText("");
+            saveItemsToFile();
         }
     }
 
@@ -90,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
                         public void onClick(DialogInterface dialogInterface, int i) {
                             items.remove(position); // Remove item from the ArrayList
                             itemsAdapter.notifyDataSetChanged(); // Notify listView adapter to update the list
+                            saveItemsToFile();
                         } })
                     .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialogInterface, int i) {
@@ -114,8 +123,43 @@ public class MainActivity extends AppCompatActivity {
                     intent.putExtra("position", position);
                     // brings up the second activity
                     mLauncher.launch(intent);
-                    itemsAdapter.notifyDataSetChanged(); }
+                    itemsAdapter.notifyDataSetChanged();
+                    saveItemsToFile();
+                }
             }
         });
+    }
+
+    private void readItemsFromFile() {
+        //retrieve the app's private folder.
+        //this folder cannot be accessed by other apps
+        File filesDir = getFilesDir();
+
+        //prepare a file to read the data
+        File todoFile = new File(filesDir, "todo.txt");
+
+        //if file does not exist, create an empty list
+        if (!todoFile.exists()) {
+            items = new ArrayList<String>();
+        } else {
+            try {
+                //read data and put it into the ArrayList
+                items = new ArrayList<String>(FileUtils.readLines(todoFile));
+            } catch (IOException ex) {
+                items = new ArrayList<String>();
+            }
+        }
+    }
+
+    private void saveItemsToFile() {
+        File filesDir = getFilesDir();
+        //using the same file for reading. Should use define a global string instead.
+        File todoFile = new File(filesDir,"todo.txt");
+        try {
+            //write list to file
+            FileUtils.writeLines(todoFile,items);
+        } catch(IOException ex) {
+            ex.printStackTrace();
+        }
     }
 }

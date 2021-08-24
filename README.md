@@ -1,2 +1,5 @@
-# android-toDoList-app
-COMP5216 Prac 1: Build a simple ToDoList App using Android Studio
+# ToDoList Android App
+## Features
+- Add Item
+- Edit Item Name (On Click item)
+- Delete Item (Long Click item)
