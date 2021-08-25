@@ -17,6 +17,8 @@ import android.widget.ListView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -25,6 +27,8 @@ public class MainActivity extends AppCompatActivity {
     ArrayList<String> items;
     ArrayAdapter<String> itemsAdapter;
     EditText addItemEditText;
+    ToDoItemDB db;
+    ToDoItemDao toDoItemDao;
 
     // Register a request to start an activity for result and register the result callback
     ActivityResultLauncher<Intent> mLauncher = registerForActivityResult(
@@ -37,11 +41,113 @@ public class MainActivity extends AppCompatActivity {
                     items.set(position, editedItem);
                     Log.i("Updated item in list ", editedItem + ", position: " + position);
                     // Make a standard toast that just contains text
-                    Toast.makeText(getApplicationContext(), "Updated: " + editedItem, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getApplicationContext(), "Updated: " + editedItem,
+                            Toast.LENGTH_SHORT).show();
                     itemsAdapter.notifyDataSetChanged();
+                    saveItemsToDatabase();
                 }
             }
     );
+
+
+    private void setupListViewListener() {
+        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            public boolean onItemLongClick(AdapterView<?> parent, View view, final int position,
+                                           long rowId) {
+                Log.i("MainActivity", "Long Clicked item " + position);
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                builder.setTitle(R.string.dialog_delete_title)
+                    .setMessage(R.string.dialog_delete_msg)
+                    .setPositiveButton(R.string.delete, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialogInterface, int i) {
+                            items.remove(position); // Remove item from the ArrayList
+                            // Notify listView adapter to update the list:
+                            itemsAdapter.notifyDataSetChanged();
+                            saveItemsToDatabase();
+                        }
+                    })
+                    .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialogInterface, int i) {
+                            // User cancelled the dialog
+                            // Nothing happens
+                        }
+                    });
+                builder.create().show();
+                return true;
+            }
+        });
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                String updateItem = (String) itemsAdapter.getItem(position);
+                Log.i("MainActivity", "Clicked item " + position + ": " + updateItem);
+                Intent intent = new Intent(MainActivity.this,
+                        EditToDoItemActivity.class);
+                if (intent != null) {
+                    // put "extras" into the bundle for access in the edit activity
+                    intent.putExtra("item", updateItem);
+                    intent.putExtra("position", position);
+                    // brings up the second activity
+                    mLauncher.launch(intent);
+                    itemsAdapter.notifyDataSetChanged();
+                }
+            }
+        });
+    }
+
+    private void readItemsFromDatabase() {
+        //Use asynchronous task to run query on the background and wait for result
+        try {
+            // Run a task specified by a Runnable Object asynchronously.
+            CompletableFuture<Void> future = CompletableFuture.runAsync(new Runnable() {
+                @Override
+                public void run() {
+                    //read items from database
+                    List<ToDoItem> itemsFromDB = toDoItemDao.listAll();
+                    items = new ArrayList<String>();
+                    if (itemsFromDB != null & itemsFromDB.size() > 0) {
+                        for (ToDoItem item : itemsFromDB) {
+                            items.add(item.getToDoItemName());
+                            Log.i("SQLite read item", "ID: " + item.getToDoItemID() +
+                                    " Name: " + item.getToDoItemName());
+                        }
+                    }
+                    System.out.println("I'll run in a separate thread than the main thread.");
+                }
+            });
+
+            // Block and wait for the future to complete
+            future.get();
+        } catch(Exception ex) {
+            Log.e("readItemsFromDatabase", ex.getStackTrace().toString());
+        }
+    }
+
+    private void saveItemsToDatabase() {
+        //Use asynchronous task to run query on the background to avoid locking UI
+        try {
+            // Run a task specified by a Runnable Object asynchronously.
+            CompletableFuture<Void> future = CompletableFuture.runAsync(new Runnable() {
+                @Override
+                public void run() {
+                    //delete all items and re-insert
+                    toDoItemDao.deleteAll();
+                    for (String todo : items) {
+                        ToDoItem item = new ToDoItem(todo);
+                        toDoItemDao.insert(item);
+                        Log.i("SQLite saved item", todo);
+                    }
+                    System.out.println("I'll run in a separate thread than the main thread.");
+                }
+            });
+
+            // Block and wait for the future to complete
+            future.get();
+        } catch(Exception ex) {
+            Log.e("saveItemsToDatabase", ex.getStackTrace().toString());
+        }
+    }
 
 
     @Override
@@ -60,6 +166,11 @@ public class MainActivity extends AppCompatActivity {
         items.add("item one");
         items.add("item two");
 
+        // Setup Room Database Entities
+        db = ToDoItemDB.getDatabase(this.getApplication().getApplicationContext());
+        toDoItemDao = db.toDoItemDao();
+        readItemsFromDatabase();
+
         // Create an adapter for the list view using Android's built-in item layout
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1,
                 items);
@@ -67,6 +178,7 @@ public class MainActivity extends AppCompatActivity {
         // Connect the listView and the adapter
         listView.setAdapter(itemsAdapter);
         setupListViewListener();
+
     }
 
 
@@ -75,47 +187,8 @@ public class MainActivity extends AppCompatActivity {
         if (toAddString != null && toAddString.length() > 0) {
             itemsAdapter.add(toAddString); // Add text to list view adapter
             addItemEditText.setText("");
+            saveItemsToDatabase();
         }
     }
 
-
-    private void setupListViewListener() {
-        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            public boolean onItemLongClick(AdapterView<?> parent, View view, final int position, long rowId) {
-                Log.i("MainActivity", "Long Clicked item " + position);
-                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-                builder.setTitle(R.string.dialog_delete_title)
-                    .setMessage(R.string.dialog_delete_msg)
-                    .setPositiveButton(R.string.delete, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            items.remove(position); // Remove item from the ArrayList
-                            itemsAdapter.notifyDataSetChanged(); // Notify listView adapter to update the list
-                        } })
-                    .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            // User cancelled the dialog
-                            // Nothing happens
-                        }
-                    });
-                builder.create().show();
-                return true;
-            }
-        });
-
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                String updateItem = (String) itemsAdapter.getItem(position);
-                Log.i("MainActivity", "Clicked item " + position + ": " + updateItem);
-                Intent intent = new Intent(MainActivity.this, EditToDoItemActivity.class);
-                if (intent != null) {
-                    // put "extras" into the bundle for access in the edit activity
-                    intent.putExtra("item", updateItem);
-                    intent.putExtra("position", position);
-                    // brings up the second activity
-                    mLauncher.launch(intent);
-                    itemsAdapter.notifyDataSetChanged(); }
-            }
-        });
-    }
 }
